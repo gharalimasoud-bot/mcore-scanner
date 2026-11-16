@@ -1,0 +1,25 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# API keys and certificates
+*.pem
+*.key
+secrets.json
+credentials.json
+
+# System files
+.DS_Store
+
+# Logs
+*.log
