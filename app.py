@@ -6,6 +6,7 @@ import asyncio
 import time
 
 from scanner import get_contracts, scan_symbol
+from daily_range_scanner import scan_daily_market
 
 app = FastAPI(title="M-CORE Scanner")
 
@@ -14,6 +15,12 @@ app = FastAPI(title="M-CORE Scanner")
 async def dashboard():
     return HTML
 
+@app.get("/api/daily-range")
+async def api_daily_range():
+
+    result = await scan_daily_market()
+
+    return result
 
 @app.get("/api/scan")
 async def api_scan():
@@ -271,6 +278,56 @@ tr:hover {
             </tbody>
         </table>
     </div>
+        <div style="margin-top:45px;">
+
+        <h2 style="color:#22c55e;">
+            DAILY RANGE SCANNER
+        </h2>
+
+        <p style="color:#8993a4;">
+            Price position relative to yesterday's high and low
+        </p>
+
+        <div class="stats">
+
+            <div class="stat">
+                <small>SCANNED</small>
+                <h2 id="dailyScanned">--</h2>
+            </div>
+
+            <div class="stat">
+                <small>FAILED</small>
+                <h2 id="dailyFailed">--</h2>
+            </div>
+
+            <div class="stat">
+                <small>MATCHED</small>
+                <h2 id="dailyMatched">--</h2>
+            </div>
+
+        </div>
+
+        <div class="controls">
+
+            <button id="dailyScanBtn" onclick="runDailyScan()">
+                SCAN DAILY RANGE
+            </button>
+
+            <input
+                id="dailySearch"
+                placeholder="Search symbol..."
+                oninput="renderDailyTables()"
+            >
+
+        </div>
+
+        <div class="status" id="dailyStatus">
+            Ready to scan daily range.
+        </div>
+
+        <div id="dailyResults"></div>
+
+    </div>
 
 </div>
 
@@ -377,7 +434,168 @@ function renderTable() {
             '<tr><td colspan="5">No results found.</td></tr>';
     }
 }
+let dailyData = null;
 
+function escapeHTML(value) {
+    return String(value).replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+    })[char]);
+}
+
+async function runDailyScan() {
+
+    const btn = document.getElementById("dailyScanBtn");
+    const status = document.getElementById("dailyStatus");
+
+    btn.disabled = true;
+    btn.textContent = "SCANNING...";
+    status.textContent = "Scanning daily candles...";
+
+    try {
+
+        const response = await fetch("/api/daily-range");
+
+        if (!response.ok) {
+            throw new Error("Server error: " + response.status);
+        }
+
+        dailyData = await response.json();
+
+        document.getElementById("dailyScanned").textContent =
+            dailyData.scanned;
+
+        document.getElementById("dailyFailed").textContent =
+            dailyData.failed;
+
+        document.getElementById("dailyMatched").textContent =
+            dailyData.matched;
+
+        status.textContent =
+            "Daily scan completed | " +
+            new Date().toLocaleTimeString();
+
+        renderDailyTables();
+
+    } catch (error) {
+
+        status.textContent = "Error: " + error.message;
+
+    } finally {
+
+        btn.disabled = false;
+        btn.textContent = "SCAN DAILY RANGE";
+
+    }
+}
+
+function renderDailyTables() {
+
+    if (!dailyData) return;
+
+    const search = document
+        .getElementById("dailySearch")
+        .value.toUpperCase();
+
+    const sections = [
+        {
+            title: "NEAR YESTERDAY HIGH",
+            key: "top",
+            metric: "position",
+            label: "POSITION"
+        },
+        {
+            title: "NEAR YESTERDAY LOW",
+            key: "bottom",
+            metric: "position",
+            label: "POSITION"
+        },
+        {
+            title: "ABOVE YESTERDAY HIGH",
+            key: "above_high",
+            metric: "distance_from_high",
+            label: "DISTANCE FROM HIGH"
+        },
+        {
+            title: "BELOW YESTERDAY LOW",
+            key: "below_low",
+            metric: "distance_from_low",
+            label: "DISTANCE FROM LOW"
+        }
+    ];
+
+    const container = document.getElementById("dailyResults");
+
+    container.innerHTML = "";
+
+    sections.forEach(section => {
+
+        const items = dailyData[section.key].filter(item =>
+            item.symbol.toUpperCase().includes(search)
+        );
+
+        let html = `
+            <div style="margin-top:30px;">
+                <h3>${section.title} (${items.length})</h3>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>SYMBOL</th>
+                                <th>PRICE</th>
+                                <th>YESTERDAY HIGH</th>
+                                <th>YESTERDAY LOW</th>
+                                <th>${section.label}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        if (items.length === 0) {
+
+            html += `
+                <tr>
+                    <td colspan="6">No results found.</td>
+                </tr>
+            `;
+
+        } else {
+
+            items.forEach((item, index) => {
+
+                const metric = Number(item[section.metric]);
+
+                html += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${escapeHTML(item.symbol)}</td>
+                        <td>${item.price}</td>
+                        <td>${item.yesterday_high}</td>
+                        <td>${item.yesterday_low}</td>
+                        <td class="positive">${metric.toFixed(3)}%</td>
+                    </tr>
+                `;
+
+            });
+
+        }
+
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        container.insertAdjacentHTML("beforeend", html);
+
+    });
+}
 </script>
 
 </body>
